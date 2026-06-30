@@ -1,0 +1,38 @@
+# ── Secrets & credentials ─────────────────────────────────
+# (no inline comments after patterns — git treats them as literal)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# WhatsApp (Baileys) session — contains live login credentials
+data/wa-auth/
+data/whatsapp-qr.png
+
+# Claude CLI worker runtime state
+data/claude-main/
+
+# ── Runtime data ──────────────────────────────────────────
+data/*.db
+data/*.db-journal
+data/images/
+logs/
+
+# ── Build output ──────────────────────────────────────────
+dist/
+*.tsbuildinfo
+
+# ── Dependencies ──────────────────────────────────────────
+node_modules/
+
+# ── Editor / OS ───────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+
+# Keep the example env and an empty data dir
+!.env.example
+!data/.gitkeep

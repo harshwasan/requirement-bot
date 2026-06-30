@@ -1,0 +1,357 @@
+---
+description: Explicit, beginner-friendly code style. No clever shortening.
+alwaysApply: true
+---
+
+# Readable Code Style
+
+Optimize for someone reading the code top-to-bottom for the first time.
+"Clever" or "concise" is not a win here. Each line should do one thing.
+
+These rules apply to ALL languages in this repo (TypeScript, JavaScript, SQL,
+PowerShell, Python). Examples below use TS but the spirit is universal.
+
+## 1. Always use braces on conditionals - even one-liners
+
+```ts
+// BAD - no braces, easy to misread when scanning
+if (user === null) return;
+if (!ok) throw new Error('boom');
+
+// GOOD - braces always, even for a single statement
+if (user === null) {
+  return;
+}
+
+if (!ok) {
+  throw new Error('boom');
+}
+```
+
+Same for `else`, `for`, `while`. Never inline the body.
+
+## 2. No ternary operator (`a ? b : c`)
+
+Use a real `if / else` with braces.
+
+```ts
+// BAD
+const label = count === 0 ? 'empty' : 'has items';
+return s === '' ? null : s;
+
+// GOOD
+let label;
+if (count === 0) {
+  label = 'empty';
+} else {
+  label = 'has items';
+}
+
+if (s === '') {
+  return null;
+}
+return s;
+```
+
+## 3. No method chains - one operation per line
+
+If you find yourself writing `foo().bar().baz()`, split it. Each step gets
+its own line and its own named variable. Read top-to-bottom, inner step first.
+
+```ts
+// BAD - two operations on one line, reads outside-in
+const cleaned = String(input).trim();
+const ids = rows.filter(r => r.active).map(r => r.id);
+
+// GOOD - one operation per line, reads top-to-bottom
+const asString = String(input);
+const cleaned  = asString.trim();
+
+const activeRows = rows.filter(function (r) { return r.active; });
+const ids = activeRows.map(function (r) { return r.id; });
+```
+
+Exception: a single `.then()` after `await`-able promise chains is fine, and
+fluent SQL builders are fine. The rule targets data-transform chains.
+
+## 4. No arrow-function bodies without an explicit `return`
+
+```ts
+// BAD - implicit return, easy to miss
+const ids = rows.map(r => r.id);
+const ok = list.find(x => x.id === target);
+
+// GOOD - body, braces, explicit return
+const ids = rows.map(function (r) {
+  return r.id;
+});
+
+const ok = list.find(function (x) {
+  return x.id === target;
+});
+```
+
+Plain arrow functions are still OK for short callbacks where the body is
+literally `return X` and there's no `.then()` chain - e.g.
+`setTimeout(() => doThing(), 100)`. The rule targets data transforms.
+
+## 5. Name every intermediate value
+
+If a value is used later or makes a step easier to read, give it a name.
+
+```ts
+// BAD - magic literal inside a call
+res.status(201).json({ id });
+
+// GOOD
+const CREATED = 201;
+res.status(CREATED).json({ id });
+```
+
+Don't go overboard - don't name single-use constants that are already clear
+in context (e.g. `res.json([])`). Use judgment: would a beginner pause and
+ask "what does that mean"?
+
+## 6. No optional-chaining + nullish-coalescing combos on one line
+
+```ts
+// BAD
+const userId = (req as any)?.user?.id ?? null;
+
+// GOOD
+const reqAny = req as any;
+let userId = null;
+if (reqAny !== null && reqAny !== undefined) {
+  if (reqAny.user !== null && reqAny.user !== undefined) {
+    userId = reqAny.user.id;
+  }
+}
+```
+
+If a single `?.` makes a line clearer (e.g. `rows[0]?.value`), keep it. The
+rule targets stacked `?.` + `??` chains that hide three checks in one line.
+
+## 7. Always declare return types and parameter types in TS
+
+```ts
+// BAD - inferred
+function nullable(v) {
+  ...
+}
+
+// GOOD - explicit
+function nullable(v: unknown): string | null {
+  ...
+}
+```
+
+## 8. Express route registration shape
+
+Every route registration in `src/routes/*.ts` must use one of the two shapes
+below. Pick the variant based on how many middlewares you have.
+
+### Variant A - single header line (0 or 1 middlewares)
+
+```
+router.<method>(<path>, <middleware?>, async (req: Request, res: Response) =>
+  {
+    // handler body
+  }
+);
+```
+
+- The path, the (optional) single middleware, and the arrow signature go on **one header line**.
+- The arrow body's opening `{` goes on its **own line**, indented under the header.
+- Closing `}` lines up with the opening `{`.
+- Closing `);` of the `router.<method>(...)` call sits on its **own final line**, at the original indentation.
+- One blank line between routes.
+
+Examples:
+
+```ts
+// no middleware
+accountsRouter.get('/accounts/valuation-deals', async (_req: Request, res: Response) =>
+  {
+    const rows = await callFn(FN_VALUATION_DEALS);
+    res.json(rows);
+  }
+);
+
+// one middleware
+accountsRouter.get('/accounts/summary', requirePermission('Accounts', 'read:summary'), async (req: Request, res: Response) =>
+  {
+    // handler
+  }
+);
+```
+
+### Variant B - multi-line (2 or more middlewares)
+
+When you have 2+ middlewares, switch to one-argument-per-line. The header line
+shape from Variant A becomes unreadable past 1 middleware.
+
+```
+router.<method>(
+  <path>,
+  <middleware1>,
+  <middleware2>,
+  ...
+  async (req: Request, res: Response) =>
+    {
+      // handler body
+    }
+);
+```
+
+Notes for Variant B:
+- The opening `(` is at the **end of the first line** (the `router.<method>(` line).
+- Each argument is on its own line, indented one level, comma at the end (no trailing comma after the last arg).
+- The arrow signature `async (req, res) =>` is the **last argument** and is on its own line.
+- The arrow's opening `{` is on its own line, indented **one extra level** below the arrow.
+- The handler body lives one level deeper still.
+- Closing `}` lines up with the opening `{`.
+- Closing `);` lines up with the original `router.<method>(...`.
+
+Example:
+
+```ts
+accountsRouter.post(
+  '/accounts/transaction',
+  authMiddleware,
+  requirePermission('Accounts', 'create'),
+  rateLimit({ max: 5, perMinute: 1 }),
+  async (req: Request, res: Response) =>
+    {
+      // handler
+    }
+);
+```
+
+### Switch rule
+
+| # of middlewares | Shape       |
+| ---------------- | ----------- |
+| 0                | Variant A   |
+| 1                | Variant A   |
+| 2 or more        | Variant B   |
+
+Never mix the two in one file unless the route counts genuinely require it.
+
+### Why this shape
+
+- The header line of Variant A tells the whole story at a glance: HTTP method, path, who can call it, that it's `async`. A reader can scan a file and see the routing surface without parsing multi-line headers.
+- Variant B keeps that scannability when you genuinely need more middlewares - each is on its own line, lined up, easy to count, easy to comment / disable.
+- The opening `{` on its own line makes the handler body visually a block, not a continuation of an expression.
+- The trailing `);` on its own line is a hard right-margin so it's obvious where the registration ends.
+
+This is non-idiomatic JavaScript (most formatters put the `{` on the previous line). Don't let a Prettier / ESLint config override it - we accept the deviation in exchange for the readability we want.
+
+## 9. File ordering: imports, then ALL consts, then helpers, then routes
+
+Every source file should read top-to-bottom in this fixed order. A reader
+scrolling the file should never have to scroll past functions and then
+hit another block of constants further down.
+
+```
+1.  imports
+2.  exported router / singleton (one line)
+3.  ALL module-level `const` declarations (grouped, with section comments)
+4.  helper functions (top-level, used by the routes)
+5.  route registrations
+```
+
+### BAD - a const buried between helpers
+
+```ts
+import { Router } from 'express';
+
+export const r = Router();
+
+const FN_GET = 'api.thing_get';
+
+function readUserId(req) {
+  // ...
+}
+
+// Buried! Reader scrolls past helpers and trips over this.
+const CLOSURE_STATUSES = ['completed', 'closed'];
+
+function isClosureStatus(value) {
+  return CLOSURE_STATUSES.includes(value);
+}
+
+r.get('/thing', ...);
+```
+
+### GOOD - every const is in the top block
+
+```ts
+import { Router } from 'express';
+
+export const r = Router();
+
+// ----------------------------------------------------------------------------
+// Function names.
+// ----------------------------------------------------------------------------
+const FN_GET = 'api.thing_get';
+
+// ----------------------------------------------------------------------------
+// Domain enums.
+// ----------------------------------------------------------------------------
+const CLOSURE_STATUSES = ['completed', 'closed'];
+
+// ----------------------------------------------------------------------------
+// Helpers.
+// ----------------------------------------------------------------------------
+
+function readUserId(req) {
+  // ...
+}
+
+function isClosureStatus(value) {
+  return CLOSURE_STATUSES.includes(value);
+}
+
+// ----------------------------------------------------------------------------
+// Routes.
+// ----------------------------------------------------------------------------
+
+r.get('/thing', ...);
+```
+
+### Why
+
+- A reader who only wants to know "what tables / functions / error codes does this file touch" can read the top of the file and stop.
+- Helpers and routes never need to forward-reference; if they need a name, it's already declared above. No mental hoisting required.
+- Section comments (the dashed banners) act as a table of contents.
+
+Group related consts together and add a single-line section comment per group
+(e.g. `// HTTP status codes.`, `// PG error codes.`, `// Function names.`).
+Never declare a stray `const` between two helpers or between two routes - if
+it feels too specific to live at the top, it probably belongs inline inside
+the one route that uses it, not as a module-level constant.
+
+## Canonical rewrite of `nullable`
+
+The shape every helper in this repo should follow:
+
+```ts
+function nullable(v: unknown): string | null {
+  if (v === undefined) {
+    return null;
+  }
+  if (v === null) {
+    return null;
+  }
+
+  const asString = String(v);
+  const trimmed = asString.trim();
+
+  if (trimmed === '') {
+    return null;
+  }
+  return trimmed;
+}
+```
+
+Yes it's longer. That is the point.
